@@ -22,7 +22,7 @@ const c = {
   yellow: (s) => `\x1b[33m${s}\x1b[0m`,
   cyan: (s) => `\x1b[36m${s}\x1b[0m`,
 };
-const TOKEN = /<[A-Z_]+_\d+(?:_[A-Z]+)?>/g;
+const TOKEN = /<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>/g;
 const highlight = (s) => s.replace(TOKEN, (t) => c.cyan(t));
 
 function args() {

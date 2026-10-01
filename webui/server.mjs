@@ -13,8 +13,8 @@ const TAP = process.env.TAP_URL ?? 'http://localhost:4010';
 const PROXY_KEY = process.env.PROXY_KEY ?? 'sk-poc-local';
 const LITELLM_CONFIG = process.env.LITELLM_CONFIG ?? new URL('../litellm/config.yaml', import.meta.url).pathname;
 const SAMPLES = process.env.SAMPLES ?? new URL('../samples.json', import.meta.url).pathname;
-const TOKEN = /(<[A-Z_]+_\d+(?:_[A-Z]+)?>)/;
-const TOKEN_G = /<[A-Z_]+_\d+(?:_[A-Z]+)?>/g;
+const TOKEN = /(<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>)/;
+const TOKEN_G = /<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>/g;
 
 /** The entity types LiteLLM drops before masking, read from its config so the two never disagree. */
 async function deniedEntities() {

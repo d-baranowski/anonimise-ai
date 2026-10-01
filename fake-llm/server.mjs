@@ -9,7 +9,7 @@ import http from 'node:http';
 
 const PORT = Number(process.env.PORT ?? 4010);
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
-const TOKEN = /<[A-Z_]+_\d+(?:_[A-Z]+)?>/g;
+const TOKEN = /<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>/g;
 let last = null;
 
 function textOf(content) {

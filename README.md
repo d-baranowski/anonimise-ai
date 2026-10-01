@@ -62,9 +62,10 @@ Add your own cases to `samples.json` (`expect` lists the values that must not re
 - **Linked mode (default) gives one person one placeholder** — `litellm/linked_presidio.py`, a
   subclass of LiteLLM's Presidio hook that replaces only its numbering. Full names sharing stems
   ("Jan Nowak", "Janowi Nowakowi") and initials that abbreviate exactly one of them ("JN", the
-  JN/MK in a JN-MK-MON code) share a number; initials get `<PERSON_1_INITIALS>` so the code
-  restores intact. Inflected forms restore to the shortest one ("Przypomnij Jan Nowak"), and two
-  people with the same initials stay unlinked. It also resolves overlapping findings, so the
+  JN/MK in a JN-MK-MON code) share a number, and each distinct form gets its own variant —
+  `<PERSON_2_V1>` "Jana Nowaka", `<PERSON_2_V2>` "Jan Nowak", `<PERSON_2_INITIALS>` "JN" — so the
+  model sees one person and the reply restores exactly what was written. A bare `<PERSON_2>` the
+  model invents restores to the shortest form. Two people with the same initials stay unlinked. It also resolves overlapping findings, so the
   email/URL bug does not hit it. Heuristic stem matching, not a lemmatiser.
 - **LiteLLM's own numbering (`--plain`, or "LiteLLM" in the UI): each mention is a separate token.** "Marek Wiśniewski" and "Marka Wiśniewskiego" become
   `<PERSON_1>` and `<PERSON_2>`; the model cannot tell they are one person.

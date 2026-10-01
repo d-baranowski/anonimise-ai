@@ -139,13 +139,13 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TOKEN = /(<[A-Z_]+(?:_\d+(?:_[A-Z]+)?)?>)/g;
+const TOKEN = /(<[A-Z_]+(?:_\d+(?:_[A-Z0-9]+)?)?>)/g;
 const KNOWN = ['PERSON', 'NRP', 'LOCATION', 'ORGANIZATION', 'EMAIL_ADDRESS', 'PHONE_NUMBER', 'URL', 'PL_PESEL', 'IBAN_CODE', 'CREDIT_CARD', 'DATE_TIME'];
 let samples = [];
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const entityClass = (entity) => `e-${KNOWN.includes(entity) ? entity : 'other'}`;
-const entityOfToken = (token) => token.slice(1, -1).replace(/_\d+(?:_[A-Z]+)?$/, '');
+const entityOfToken = (token) => token.slice(1, -1).replace(/_\d+(?:_[A-Z0-9]+)?$/, '');
 
 function block(html, empty) {
   return empty ? `<div class="text empty">${esc(empty)}</div>` : `<div class="text">${html}</div>`;
@@ -170,7 +170,7 @@ function markTokens(text, { badStray = false } = {}) {
     .split(TOKEN)
     .map((part, i) => {
       if (i % 2 === 0) return esc(part);
-      const numbered = /_\d+(?:_[A-Z]+)?>$/.test(part);
+      const numbered = /_\d+(?:_[A-Z0-9]+)?>$/.test(part);
       return `<span class="tok ${entityClass(entityOfToken(part))}${badStray && !numbered ? ' bad-tok' : ''}">${esc(part)}</span>`;
     })
     .join('');

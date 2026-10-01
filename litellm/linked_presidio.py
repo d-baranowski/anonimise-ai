@@ -13,10 +13,12 @@ reach the model as three different people. This replaces only that numbering ste
 - Overlapping findings (an email also matched as a URL) are resolved before numbering, keeping the
   longer one. LiteLLM's own numbering applies both and garbles the text.
 
-A shared placeholder restores to the shortest full form of the name, which for Polish is usually
-the nominative ("Jan Nowak", not "Jana Nowaka"). Initials get a twin of the person's placeholder,
-<PERSON_1_INITIALS>, so the model still sees one person but a therapy code restores as JN-MK-MON
-rather than with full names written into it. Everything else is LiteLLM's: analysis,
+The number says who; a suffix says which form, so the reply restores exactly what was written:
+
+    "Jana Nowaka" -> <PERSON_2_V1>    "Jan Nowak" -> <PERSON_2_V2>    "JN" -> <PERSON_2_INITIALS>
+
+A person met in only one full form keeps a plain <PERSON_1>. A bare <PERSON_2> the model writes on
+its own restores to the shortest full form, usually the nominative ("Jan Nowak"). Everything else is LiteLLM's: analysis,
 the per-request map, and putting the values back into the reply.
 """
 
@@ -140,12 +142,17 @@ class LinkedPresidio(_OPTIONAL_PresidioPIIMasking):
         new_text = text
         for result, (seq, identity) in sorted(zip(results, linked), key=lambda pair: -pair[0]["start"]):
             mention = text[result["start"] : result["end"]]
+            base = f"{result['entity_type']}_{seq}"
+            # Distinct full forms in order of first appearance; an exact repeat reuses its variant.
+            forms = list(dict.fromkeys(n for n in identity["names"] if not INITIALS.match(n)))
             if result["entity_type"] == "PERSON" and INITIALS.match(mention):
-                token = f"<PERSON_{seq}_INITIALS>"
-                pii_tokens[token] = mention
+                token = f"<{base}_INITIALS>"
+            elif len(forms) > 1:
+                token = f"<{base}_V{forms.index(mention) + 1}>"
             else:
-                token = f"<{result['entity_type']}_{seq}>"
-                pii_tokens[token] = _restore_value(identity["names"])
+                token = f"<{base}>"
+            pii_tokens[token] = mention
+            pii_tokens.setdefault(f"<{base}>", _restore_value(identity["names"]))
             new_text = new_text[: result["start"]] + token + new_text[result["end"] :]
             masked_entity_count[result["entity_type"]] = masked_entity_count.get(result["entity_type"], 0) + 1
         return new_text
