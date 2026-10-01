@@ -114,13 +114,6 @@
           <select id="model"><option value="fake">Fake (local echo)</option><option value="claude">Claude (real)</option></select>
         </div>
       </div>
-      <div style="margin-top:12px">
-        <label for="guardrail">Masking</label>
-        <select id="guardrail">
-          <option value="presidio-linked">Linked — one person, one placeholder</option>
-          <option value="presidio-pii">LiteLLM — each mention its own placeholder</option>
-        </select>
-      </div>
       <label class="check"><input type="checkbox" id="stream"> Stream the reply</label>
       <button id="run">Run</button>
       <div class="hint">Ctrl/⌘ + Enter runs it. The fake provider never leaves your machine; Claude needs ANTHROPIC_API_KEY in .env.</div>
@@ -158,8 +151,8 @@ function markOriginal(text, findings) {
   for (const f of [...findings].sort((a, b) => a.start - b.start || b.end - a.end)) {
     if (f.start < pos) continue;
     html += esc(text.slice(pos, f.start));
-    const title = `${f.entity} · ${f.score.toFixed(2)} · ${f.recognizer}${f.denied ? ' · not masked (deny list)' : ''}`;
-    html += `<mark class="${entityClass(f.entity)}" title="${esc(title)}"${f.denied ? ' style="opacity:.5"' : ''}>${esc(text.slice(f.start, f.end))}</mark>`;
+    const title = `${f.entity} · ${f.score.toFixed(2)} · ${f.recognizer}`;
+    html += `<mark class="${entityClass(f.entity)}" title="${esc(title)}">${esc(text.slice(f.start, f.end))}</mark>`;
     pos = f.end;
   }
   return html + esc(text.slice(pos));
@@ -199,7 +192,7 @@ function findingsTable(findings) {
         <td><span class="tok ${entityClass(f.entity)}">${esc(f.entity)}</span></td>
         <td class="mono">${esc(f.text)}</td>
         <td>${f.score.toFixed(2)}</td>
-        <td>${esc(f.recognizer)}${f.denied ? '<span class="flag muted">deny list — not masked</span>' : ''}${f.overlaps ? '<span class="flag warn">overlaps</span>' : ''}</td>
+        <td>${esc(f.recognizer)}${f.overlaps ? '<span class="flag warn">overlaps — the longer one is masked</span>' : ''}</td>
       </tr>`,
     )
     .join('');
@@ -233,7 +226,7 @@ function render(r) {
     ${stage(1, 'Your prompt', 'What your app sends to the proxy. Highlighted: what Presidio found (hover for details).', 'local', block(markOriginal(r.text, s.findings)))}
     ${arrow('LiteLLM asks Presidio analyzer what is PII')}
     ${stage(2, 'Detected', `Presidio analyzer, ${r.language} — spaCy NER for names and places, patterns and checksums for the rest. No LLM involved. ${r.timings.analyzeMs} ms.`, 'local', findingsTable(s.findings))}
-    ${arrow('LiteLLM replaces each finding with a numbered placeholder and remembers the original')}
+    ${arrow('the proxy gives each person a numbered placeholder — one number per person, a suffix per written form — and remembers the originals')}
     <div class="two">
       ${stage(3, `Sent to the ${provider}`, 'The prompt as it left the proxy. This is all the provider ever sees.', r.model === 'fake' ? 'local' : 'remote', block(markTokens(s.sent ?? ''), s.sent === undefined ? 'Nothing recorded.' : ''))}
       ${stage(4, 'Kept by the proxy', 'The placeholder → original map, held only in memory for this request. A linked placeholder lists every form it replaced.', 'local', mapTable(s.tokenMap ?? []))}
@@ -268,7 +261,6 @@ async function run() {
         text,
         language: $('language').value,
         model: $('model').value,
-        guardrail: $('guardrail').value,
         stream: $('stream').checked,
         expect: sample?.expect ?? [],
       }),

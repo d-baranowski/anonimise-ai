@@ -1,9 +1,9 @@
-name: pii-proxy-poc
+name: anonimise-ai
 
 services:
   presidio-analyzer:
     build: ./analyzer
-    image: pii-poc-analyzer:local
+    image: anonimise-ai-analyzer:local
     ports: ["5002:3000"]
 
   presidio-anonymizer:

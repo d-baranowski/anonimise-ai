@@ -11,19 +11,12 @@ const ANALYZER = process.env.ANALYZER_URL ?? 'http://localhost:5002';
 const PROXY = process.env.PROXY_URL ?? 'http://localhost:4000';
 const TAP = process.env.TAP_URL ?? 'http://localhost:4010';
 const PROXY_KEY = process.env.PROXY_KEY ?? 'sk-poc-local';
-const LITELLM_CONFIG = process.env.LITELLM_CONFIG ?? new URL('../litellm/config.yaml', import.meta.url).pathname;
 const SAMPLES = process.env.SAMPLES ?? new URL('../samples.json', import.meta.url).pathname;
+const GUARDRAIL = 'presidio-linked';
 const TOKEN = /(<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>)/;
 const TOKEN_G = /<[A-Z_]+_\d+(?:_[A-Z0-9]+)?>/g;
 
-/** The entity types LiteLLM drops before masking, read from its config so the two never disagree. */
-async function deniedEntities() {
-  const config = await readFile(LITELLM_CONFIG, 'utf8');
-  const match = config.match(/presidio_entities_deny_list:\s*\[([^\]]*)\]/);
-  return match ? match[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
-}
-
-async function analyze(text, language, guardrail) {
+async function analyze(text, language) {
   const started = Date.now();
   const res = await fetch(`${ANALYZER}/analyze`, {
     method: 'POST',
@@ -32,8 +25,6 @@ async function analyze(text, language, guardrail) {
   });
   if (!res.ok) throw new Error(`analyzer answered ${res.status}: ${await res.text()}`);
   const raw = (await res.json()).sort((a, b) => a.start - b.start || b.end - a.end);
-  // Only LiteLLM's own hook has a deny list; the linked one resolves overlaps instead.
-  const denied = guardrail === 'presidio-pii' ? await deniedEntities() : [];
   const findings = raw.map((f, i) => ({
     entity: f.entity_type,
     start: f.start,
@@ -41,13 +32,12 @@ async function analyze(text, language, guardrail) {
     text: text.slice(f.start, f.end),
     score: f.score,
     recognizer: f.analysis_explanation?.recognizer ?? '',
-    denied: denied.includes(f.entity_type),
     overlaps: raw.some((g, j) => j !== i && g.start < f.end && f.start < g.end),
   }));
   return { findings, ms: Date.now() - started };
 }
 
-async function viaProxy(text, model, stream, language, guardrail) {
+async function viaProxy(text, model, stream, language) {
   const started = Date.now();
   const res = await fetch(`${PROXY}/v1/chat/completions`, {
     method: 'POST',
@@ -57,8 +47,7 @@ async function viaProxy(text, model, stream, language, guardrail) {
       stream,
       max_tokens: 1024,
       messages: [{ role: 'user', content: text }],
-      guardrails: [guardrail],
-      guardrail_config: { [guardrail]: { language } },
+      guardrail_config: { [GUARDRAIL]: { language } },
     }),
   });
   if (!res.ok) throw new Error(`LiteLLM answered ${res.status}: ${await res.text()}`);
@@ -114,15 +103,15 @@ function alignTokens(original, masked) {
   return { map, aligned: pos === original.length, at: pos };
 }
 
-async function run({ text, language = 'pl', model = 'fake', stream = false, guardrail = 'presidio-linked', expect = [] }) {
-  const result = { text, language, model, stream, guardrail, stages: {}, checks: [], timings: {} };
+async function run({ text, language = 'pl', model = 'fake', stream = false, expect = [] }) {
+  const result = { text, language, model, stream, stages: {}, checks: [], timings: {} };
 
-  const analysis = await analyze(text, language, guardrail);
+  const analysis = await analyze(text, language);
   result.stages.findings = analysis.findings;
   result.timings.analyzeMs = analysis.ms;
 
   await fetch(`${TAP}/last`, { method: 'DELETE' });
-  const proxied = await viaProxy(text, model, stream, language, guardrail);
+  const proxied = await viaProxy(text, model, stream, language);
   result.stages.restored = proxied.text;
   result.timings.roundTripMs = proxied.ms;
   if (stream) result.timings.stream = { chunks: proxied.chunks, firstChunkMs: proxied.firstChunkMs };
@@ -149,7 +138,7 @@ async function run({ text, language = 'pl', model = 'fake', stream = false, guar
   }
   result.stages.tokenMap = [...grouped.values()];
 
-  const mustNotLeak = [...new Set([...expect, ...analysis.findings.filter((f) => !f.denied).map((f) => f.text)])];
+  const mustNotLeak = [...new Set([...expect, ...analysis.findings.map((f) => f.text)])];
   const leaked = mustNotLeak.filter((v) => tap.sentPrompt.includes(v));
   result.checks.push(
     leaked.length
@@ -168,7 +157,7 @@ async function run({ text, language = 'pl', model = 'fake', stream = false, guar
     result.checks.push(
       echoed === text
         ? { ok: true, label: 'Round trip is lossless: the echoed prompt came back exactly as sent' }
-        : guardrail === 'presidio-linked' && alignment.aligned && linkedForms.length
+        : alignment.aligned && linkedForms.length
           ? {
               ok: true,
               info: true,
@@ -212,9 +201,6 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && req.url === '/api/samples') {
       return send(res, 200, JSON.parse(await readFile(SAMPLES, 'utf8')));
-    }
-    if (req.method === 'GET' && req.url === '/api/config') {
-      return send(res, 200, { denied: await deniedEntities() });
     }
     if (req.method === 'POST' && req.url === '/api/run') {
       let body = '';

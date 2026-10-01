@@ -6,7 +6,6 @@
 //   node demo.mjs --text "..." [--lang pl]
 //   node demo.mjs --model claude       a real provider (needs ANTHROPIC_API_KEY in .env)
 //   node demo.mjs --stream             request a streamed reply
-//   node demo.mjs --plain              LiteLLM's own numbering instead of one placeholder per person
 import { readFileSync } from 'node:fs';
 
 const PROXY = 'http://localhost:4000';
@@ -27,11 +26,10 @@ const highlight = (s) => s.replace(TOKEN, (t) => c.cyan(t));
 
 function args() {
   const a = process.argv.slice(2);
-  const opt = { model: 'fake', stream: false, guardrail: 'presidio-linked', names: [] };
+  const opt = { model: 'fake', stream: false, names: [] };
   for (let i = 0; i < a.length; i++) {
     if (a[i] === '--model') opt.model = a[++i];
     else if (a[i] === '--stream') opt.stream = true;
-    else if (a[i] === '--plain') opt.guardrail = 'presidio-pii';
     else if (a[i] === '--text') opt.text = a[++i];
     else if (a[i] === '--lang') opt.lang = a[++i];
     else opt.names.push(a[i]);
@@ -48,7 +46,7 @@ async function analyze(text, language) {
   return (await res.json()).sort((x, y) => x.start - y.start);
 }
 
-async function viaProxy(text, model, stream, language, guardrail) {
+async function viaProxy(text, model, stream, language) {
   const res = await fetch(`${PROXY}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
@@ -57,8 +55,7 @@ async function viaProxy(text, model, stream, language, guardrail) {
       stream,
       messages: [{ role: 'user', content: text }],
       // Per-request language for the guardrail.
-      guardrails: [guardrail],
-      guardrail_config: { [guardrail]: { language } },
+      guardrail_config: { 'presidio-linked': { language } },
     }),
   });
   if (!res.ok) throw new Error(`proxy answered ${res.status}: ${await res.text()}`);
@@ -103,7 +100,7 @@ async function run(sample, opt) {
     );
   }
 
-  const answer = await viaProxy(text, opt.model, opt.stream, language, opt.guardrail);
+  const answer = await viaProxy(text, opt.model, opt.stream, language);
 
   if (opt.model === 'fake') {
     const last = await (await fetch(`${FAKE}/last`)).json();
@@ -130,9 +127,7 @@ async function run(sample, opt) {
     console.log(
       echoed === text
         ? c.green('  ✓ round trip is lossless: the echoed prompt matches the original exactly')
-        : opt.guardrail === 'presidio-linked'
-          ? c.yellow(`  ℹ linked mentions came back in one form:\n     sent:     ${JSON.stringify(text)}\n     restored: ${JSON.stringify(echoed)}`)
-          : c.red(`  ✗ round trip changed the text:\n     sent:     ${JSON.stringify(text)}\n     restored: ${JSON.stringify(echoed)}`),
+        : c.red(`  ✗ round trip changed the text:\n     sent:     ${JSON.stringify(text)}\n     restored: ${JSON.stringify(echoed)}`),
     );
     const leftovers = answer.match(TOKEN);
     if (leftovers) console.log(c.red(`  ✗ placeholders left unrestored: ${leftovers.join(', ')}`));
