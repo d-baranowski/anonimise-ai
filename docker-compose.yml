@@ -18,8 +18,8 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:v1.103.2
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    volumes: ["./litellm/config.yaml:/app/config.yaml:ro"]
+    command: ["--config", "/app/litellm/config.yaml", "--port", "4000"]
+    volumes: ["./litellm:/app/litellm:ro"]
     environment:
       PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
       PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000

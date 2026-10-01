@@ -35,6 +35,7 @@ node demo.mjs                         # every sample in samples.json
 node demo.mjs basic same-person-twice # chosen samples
 node demo.mjs --text "Twój tekst z Janem Kowalskim" --lang pl
 node demo.mjs basic --stream          # streamed reply
+node demo.mjs initials --plain        # LiteLLM's own numbering, for comparison
 ```
 
 A real provider: put `ANTHROPIC_API_KEY=...` in `.env`, `docker compose up -d`, then
@@ -58,7 +59,14 @@ Add your own cases to `samples.json` (`expect` lists the values that must not re
 - **Streaming is broken.** The reply is restored and then masked again by a second post-call pass,
   so the app receives `<PERSON>` instead of the name. Non-streamed requests are fine. Streaming
   is also buffered: one chunk at the end, no token-by-token output.
-- **Each mention is a separate token.** "Marek Wiśniewski" and "Marka Wiśniewskiego" become
+- **Linked mode (default) gives one person one placeholder** — `litellm/linked_presidio.py`, a
+  subclass of LiteLLM's Presidio hook that replaces only its numbering. Full names sharing stems
+  ("Jan Nowak", "Janowi Nowakowi") and initials that abbreviate exactly one of them ("JN", the
+  JN/MK in a JN-MK-MON code) share a number; initials get `<PERSON_1_INITIALS>` so the code
+  restores intact. Inflected forms restore to the shortest one ("Przypomnij Jan Nowak"), and two
+  people with the same initials stay unlinked. It also resolves overlapping findings, so the
+  email/URL bug does not hit it. Heuristic stem matching, not a lemmatiser.
+- **LiteLLM's own numbering (`--plain`, or "LiteLLM" in the UI): each mention is a separate token.** "Marek Wiśniewski" and "Marka Wiśniewskiego" become
   `<PERSON_1>` and `<PERSON_2>`; the model cannot tell they are one person.
 - **Restore is plain string replacement** of the tokens the model echoes back; a model that
   rewrites a token (e.g. `<PERSON 1>`) leaves it unrestored.

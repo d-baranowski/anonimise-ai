@@ -14,12 +14,14 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
       api_base: http://fake-llm:4010/anthropic
 
+# Each request names the guardrail it wants (the UI and demo.mjs do); linked is the default.
 guardrails:
+  # LiteLLM's own Presidio hook: every finding gets its own placeholder.
   - guardrail_name: presidio-pii
     litellm_params:
       guardrail: presidio
       mode: pre_call
-      default_on: true
+      default_on: false
       # Numbered placeholders (<PERSON_1>) and the map back to the real values, used to restore
       # the reply.
       output_parse_pii: true
@@ -28,6 +30,15 @@ guardrails:
       # also matched as a URL garbles the text it sends (and the map it restores from). Dropping URL
       # avoids the common case; any other overlap still trips it.
       presidio_entities_deny_list: [URL]
+
+  # The same, with mentions of one person sharing a placeholder (linked_presidio.py).
+  - guardrail_name: presidio-linked
+    litellm_params:
+      guardrail: linked_presidio.LinkedPresidio
+      mode: pre_call
+      default_on: false
+      output_parse_pii: true
+      presidio_language: pl
 
 general_settings:
   master_key: sk-poc-local

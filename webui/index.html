@@ -52,6 +52,7 @@
   .checks li { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
   .checks li.ok { background: var(--ok-bg); color: var(--ok); }
   .checks li.bad { background: var(--bad-bg); color: var(--bad); }
+  .checks li.info { background: var(--warn-bg); color: var(--warn); }
   .timings { color: var(--muted); font-size: 12px; margin-top: 10px; }
   .pipeline { display: flex; flex-direction: column; }
   .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
@@ -67,6 +68,7 @@
   .text.empty { color: var(--muted); font-style: italic; }
   mark, .tok { border-radius: 4px; padding: 0 3px; font-weight: 600; }
   .tok { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  td .tok { white-space: nowrap; }
   .e-PERSON, .e-NRP { background: var(--e-person); color: var(--e-person-ink); }
   .e-LOCATION { background: var(--e-location); color: var(--e-location-ink); }
   .e-ORGANIZATION { background: var(--e-org); color: var(--e-org-ink); }
@@ -112,6 +114,13 @@
           <select id="model"><option value="fake">Fake (local echo)</option><option value="claude">Claude (real)</option></select>
         </div>
       </div>
+      <div style="margin-top:12px">
+        <label for="guardrail">Masking</label>
+        <select id="guardrail">
+          <option value="presidio-linked">Linked — one person, one placeholder</option>
+          <option value="presidio-pii">LiteLLM — each mention its own placeholder</option>
+        </select>
+      </div>
       <label class="check"><input type="checkbox" id="stream"> Stream the reply</label>
       <button id="run">Run</button>
       <div class="hint">Ctrl/⌘ + Enter runs it. The fake provider never leaves your machine; Claude needs ANTHROPIC_API_KEY in .env.</div>
@@ -130,13 +139,13 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TOKEN = /(<[A-Z_]+(?:_\d+)?>)/g;
+const TOKEN = /(<[A-Z_]+(?:_\d+(?:_[A-Z]+)?)?>)/g;
 const KNOWN = ['PERSON', 'NRP', 'LOCATION', 'ORGANIZATION', 'EMAIL_ADDRESS', 'PHONE_NUMBER', 'URL', 'PL_PESEL', 'IBAN_CODE', 'CREDIT_CARD', 'DATE_TIME'];
 let samples = [];
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const entityClass = (entity) => `e-${KNOWN.includes(entity) ? entity : 'other'}`;
-const entityOfToken = (token) => token.slice(1, -1).replace(/_\d+$/, '');
+const entityOfToken = (token) => token.slice(1, -1).replace(/_\d+(?:_[A-Z]+)?$/, '');
 
 function block(html, empty) {
   return empty ? `<div class="text empty">${esc(empty)}</div>` : `<div class="text">${html}</div>`;
@@ -161,7 +170,7 @@ function markTokens(text, { badStray = false } = {}) {
     .split(TOKEN)
     .map((part, i) => {
       if (i % 2 === 0) return esc(part);
-      const numbered = /_\d+>$/.test(part);
+      const numbered = /_\d+(?:_[A-Z]+)?>$/.test(part);
       return `<span class="tok ${entityClass(entityOfToken(part))}${badStray && !numbered ? ' bad-tok' : ''}">${esc(part)}</span>`;
     })
     .join('');
@@ -169,7 +178,10 @@ function markTokens(text, { badStray = false } = {}) {
 
 /** The restored reply, with each value the proxy put back marked in its entity's colour. */
 function markRestored(text, tokenMap) {
-  const values = tokenMap.filter((m) => m.value).sort((a, b) => b.value.length - a.value.length);
+  const values = tokenMap
+    .filter((m) => m.restoresAs)
+    .map((m) => ({ token: m.token, value: m.restoresAs }))
+    .sort((a, b) => b.value.length - a.value.length);
   if (!values.length) return markTokens(text, { badStray: true });
   const pattern = new RegExp(`(${values.map((v) => v.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
   const byValue = new Map(values.map((v) => [v.value, v.token]));
@@ -197,9 +209,15 @@ function findingsTable(findings) {
 function mapTable(map) {
   if (!map.length) return block('', 'No placeholders were sent.');
   const rows = map
-    .map((m) => `<tr><td><span class="tok ${entityClass(entityOfToken(m.token))}">${esc(m.token)}</span></td><td class="mono">${esc(m.value)}</td></tr>`)
+    .map(
+      (m) => `<tr>
+        <td><span class="tok ${entityClass(entityOfToken(m.token))}">${esc(m.token)}</span></td>
+        <td class="mono">${m.forms.map(esc).join('<br>')}</td>
+        <td class="mono">${m.restoresAs === undefined ? '<span class="sub">not in reply</span>' : esc(m.restoresAs)}</td>
+      </tr>`,
+    )
     .join('');
-  return `<table><thead><tr><th>Placeholder</th><th>Stands for</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Placeholder</th><th>Stood for</th><th>Restores as</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function stage(n, title, where, side, body) {
@@ -218,7 +236,7 @@ function render(r) {
     ${arrow('LiteLLM replaces each finding with a numbered placeholder and remembers the original')}
     <div class="two">
       ${stage(3, `Sent to the ${provider}`, 'The prompt as it left the proxy. This is all the provider ever sees.', r.model === 'fake' ? 'local' : 'remote', block(markTokens(s.sent ?? ''), s.sent === undefined ? 'Nothing recorded.' : ''))}
-      ${stage(4, 'Kept by the proxy', 'The placeholder → original map, held only in memory for this request.', 'local', mapTable(s.tokenMap ?? []))}
+      ${stage(4, 'Kept by the proxy', 'The placeholder → original map, held only in memory for this request. A linked placeholder lists every form it replaced.', 'local', mapTable(s.tokenMap ?? []))}
     </div>
     ${arrow(`the ${provider} answers`)}
     ${stage(5, 'Provider’s raw reply', `What came back from the ${provider}, still with placeholders.`, r.model === 'fake' ? 'local' : 'remote', block(markTokens(s.providerReply ?? '', { badStray: true }), s.providerReply ? '' : 'No reply recorded.'))}
@@ -226,7 +244,9 @@ function render(r) {
     ${stage(6, 'What your app receives', 'Restored reply. Highlighted: values the proxy put back. Red outline: a placeholder that was not restored.', 'local', block(markRestored(s.restored ?? '', s.tokenMap ?? [])))}
   </div>`;
 
-  $('checks').innerHTML = r.checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '✗'} ${esc(c.label)}</li>`).join('');
+  $('checks').innerHTML = r.checks
+    .map((c) => `<li class="${c.info ? 'info' : c.ok ? 'ok' : 'bad'}">${c.info ? 'ℹ' : c.ok ? '✓' : '✗'} ${esc(c.label)}</li>`)
+    .join('');
   const t = r.timings;
   $('timings').textContent =
     `Analyze ${t.analyzeMs} ms · round trip through the proxy ${t.roundTripMs} ms` +
@@ -244,7 +264,14 @@ async function run() {
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, language: $('language').value, model: $('model').value, stream: $('stream').checked, expect: sample?.expect ?? [] }),
+      body: JSON.stringify({
+        text,
+        language: $('language').value,
+        model: $('model').value,
+        guardrail: $('guardrail').value,
+        stream: $('stream').checked,
+        expect: sample?.expect ?? [],
+      }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);

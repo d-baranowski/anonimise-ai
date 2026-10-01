@@ -29,7 +29,12 @@ ner_model_configuration:
   low_confidence_score_multiplier: 0.4
   low_score_entity_names:
     - ORGANIZATION
+  # As Presidio's own default: organisation detection has many false positives -- the Polish
+  # model took the day in a therapy code (JN-MK-MON) for one.
   labels_to_ignore:
+    - ORGANIZATION
+    - ORG
+    - orgName
     - CARDINAL
     - EVENT
     - LANGUAGE

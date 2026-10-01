@@ -41,3 +41,19 @@ recognizers:
         regex: "(?<!\\d)(?:\\+48[ -]?)?\\d{3}[ -]?\\d{3}[ -]?\\d{3}(?!\\d)"
         score: 0.6
     context: [tel, telefon, numer, komórka, komorka]
+
+  # Customer and therapist initials in a therapy code such as JN-MK-MON: the first two parts are
+  # people, the last one is the day. Case-sensitive on purpose, (?-i:...) inside Presidio's
+  # case-insensitive matching, or every hyphenated word would qualify.
+  - name: TherapyCodeInitialsRecognizer
+    type: custom
+    supported_language: pl
+    supported_entity: PERSON
+    patterns:
+      - name: customer_initials
+        regex: "(?-i:\\b[A-ZĄĆĘŁŃÓŚŹŻ]{2,3}(?=-[A-ZĄĆĘŁŃÓŚŹŻ]{2,3}-[A-Z]{2,4}\\b))"
+        score: 0.7
+      - name: therapist_initials
+        regex: "(?-i:(?<=\\b[A-ZĄĆĘŁŃÓŚŹŻ]{2}-)[A-ZĄĆĘŁŃÓŚŹŻ]{2,3}(?=-[A-Z]{2,4}\\b))"
+        score: 0.7
+

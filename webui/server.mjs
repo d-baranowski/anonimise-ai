@@ -13,8 +13,8 @@ const TAP = process.env.TAP_URL ?? 'http://localhost:4010';
 const PROXY_KEY = process.env.PROXY_KEY ?? 'sk-poc-local';
 const LITELLM_CONFIG = process.env.LITELLM_CONFIG ?? new URL('../litellm/config.yaml', import.meta.url).pathname;
 const SAMPLES = process.env.SAMPLES ?? new URL('../samples.json', import.meta.url).pathname;
-const TOKEN = /(<[A-Z_]+_\d+>)/;
-const TOKEN_G = /<[A-Z_]+_\d+>/g;
+const TOKEN = /(<[A-Z_]+_\d+(?:_[A-Z]+)?>)/;
+const TOKEN_G = /<[A-Z_]+_\d+(?:_[A-Z]+)?>/g;
 
 /** The entity types LiteLLM drops before masking, read from its config so the two never disagree. */
 async function deniedEntities() {
@@ -23,7 +23,7 @@ async function deniedEntities() {
   return match ? match[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
 }
 
-async function analyze(text, language) {
+async function analyze(text, language, guardrail) {
   const started = Date.now();
   const res = await fetch(`${ANALYZER}/analyze`, {
     method: 'POST',
@@ -32,7 +32,8 @@ async function analyze(text, language) {
   });
   if (!res.ok) throw new Error(`analyzer answered ${res.status}: ${await res.text()}`);
   const raw = (await res.json()).sort((a, b) => a.start - b.start || b.end - a.end);
-  const denied = await deniedEntities();
+  // Only LiteLLM's own hook has a deny list; the linked one resolves overlaps instead.
+  const denied = guardrail === 'presidio-pii' ? await deniedEntities() : [];
   const findings = raw.map((f, i) => ({
     entity: f.entity_type,
     start: f.start,
@@ -46,7 +47,7 @@ async function analyze(text, language) {
   return { findings, ms: Date.now() - started };
 }
 
-async function viaProxy(text, model, stream, language) {
+async function viaProxy(text, model, stream, language, guardrail) {
   const started = Date.now();
   const res = await fetch(`${PROXY}/v1/chat/completions`, {
     method: 'POST',
@@ -56,7 +57,8 @@ async function viaProxy(text, model, stream, language) {
       stream,
       max_tokens: 1024,
       messages: [{ role: 'user', content: text }],
-      guardrail_config: { 'presidio-pii': { language } },
+      guardrails: [guardrail],
+      guardrail_config: { [guardrail]: { language } },
     }),
   });
   if (!res.ok) throw new Error(`LiteLLM answered ${res.status}: ${await res.text()}`);
@@ -112,15 +114,15 @@ function alignTokens(original, masked) {
   return { map, aligned: pos === original.length, at: pos };
 }
 
-async function run({ text, language = 'pl', model = 'fake', stream = false, expect = [] }) {
-  const result = { text, language, model, stream, stages: {}, checks: [], timings: {} };
+async function run({ text, language = 'pl', model = 'fake', stream = false, guardrail = 'presidio-linked', expect = [] }) {
+  const result = { text, language, model, stream, guardrail, stages: {}, checks: [], timings: {} };
 
-  const analysis = await analyze(text, language);
+  const analysis = await analyze(text, language, guardrail);
   result.stages.findings = analysis.findings;
   result.timings.analyzeMs = analysis.ms;
 
   await fetch(`${TAP}/last`, { method: 'DELETE' });
-  const proxied = await viaProxy(text, model, stream, language);
+  const proxied = await viaProxy(text, model, stream, language, guardrail);
   result.stages.restored = proxied.text;
   result.timings.roundTripMs = proxied.ms;
   if (stream) result.timings.stream = { chunks: proxied.chunks, firstChunkMs: proxied.firstChunkMs };
@@ -135,8 +137,17 @@ async function run({ text, language = 'pl', model = 'fake', stream = false, expe
   result.stages.providerPath = tap.path;
   if (stream) result.timings.stream.providerChunks = tap.chunks;
 
+  // What each placeholder stood for in the prompt (one row per occurrence, so a linked placeholder
+  // shows every form it replaced), and what the proxy put back for it in the reply.
   const alignment = alignTokens(text, tap.sentPrompt);
-  result.stages.tokenMap = alignment.map;
+  const restoredAs = Object.fromEntries(alignTokens(proxied.text, tap.reply).map.map((m) => [m.token, m.value]));
+  const grouped = new Map();
+  for (const { token, value } of alignment.map) {
+    const row = grouped.get(token) ?? { token, forms: [], restoresAs: restoredAs[token] };
+    if (!row.forms.includes(value)) row.forms.push(value);
+    grouped.set(token, row);
+  }
+  result.stages.tokenMap = [...grouped.values()];
 
   const mustNotLeak = [...new Set([...expect, ...analysis.findings.filter((f) => !f.denied).map((f) => f.text)])];
   const leaked = mustNotLeak.filter((v) => tap.sentPrompt.includes(v));
@@ -153,10 +164,19 @@ async function run({ text, language = 'pl', model = 'fake', stream = false, expe
 
   if (tap.provider === 'fake') {
     const echoed = proxied.text.split('\n')[2];
+    const linkedForms = result.stages.tokenMap.filter((row) => row.forms.length > 1);
     result.checks.push(
       echoed === text
         ? { ok: true, label: 'Round trip is lossless: the echoed prompt came back exactly as sent' }
-        : { ok: false, label: 'Round trip changed the text: the echoed prompt differs from what you sent' },
+        : guardrail === 'presidio-linked' && alignment.aligned && linkedForms.length
+          ? {
+              ok: true,
+              info: true,
+              label: `Linked mentions come back as one form: ${linkedForms
+                .map((row) => `${row.forms.map((f) => `“${f}”`).join(', ')} → “${row.restoresAs}”`)
+                .join('; ')}`,
+            }
+          : { ok: false, label: 'Round trip changed the text: the echoed prompt differs from what you sent' },
     );
   }
   const unrestored = [...new Set(proxied.text.match(TOKEN_G) ?? [])];
