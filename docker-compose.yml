@@ -1,0 +1,28 @@
+name: pii-proxy-poc
+
+services:
+  presidio-analyzer:
+    build: ./analyzer
+    image: pii-poc-analyzer:local
+    ports: ["5002:3000"]
+
+  presidio-anonymizer:
+    image: ghcr.io/data-privacy-stack/presidio-anonymizer:2.2.364
+    ports: ["5001:3000"]
+
+  fake-llm:
+    image: node:22.20.0-alpine
+    command: ["node", "/app/server.mjs"]
+    volumes: ["./fake-llm:/app:ro"]
+    ports: ["4010:4010"]
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.103.2
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes: ["./litellm/config.yaml:/app/config.yaml:ro"]
+    environment:
+      PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
+      PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports: ["4000:4000"]
+    depends_on: [presidio-analyzer, presidio-anonymizer, fake-llm]

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "basic",
+    "language": "pl",
+    "text": "Pani Anna Kowalska ma jutro sesję u terapeuty Jana Nowaka w Krakowie.",
+    "expect": ["Anna Kowalska", "Jana Nowaka", "Krakowie"]
+  },
+  {
+    "name": "contact-and-ids",
+    "language": "pl",
+    "text": "Przypomnij Annie Kowalskiej o płatności 200 zł. PESEL 44051401359, telefon +48 600 123 456, konto PL61109010140000071219812874.",
+    "expect": ["Annie Kowalskiej", "44051401359", "+48 600 123 456", "PL61109010140000071219812874"]
+  },
+  {
+    "name": "email-overlap",
+    "language": "pl",
+    "text": "Wyślij fakturę na anna.kowalska@example.pl. Dziękuję!",
+    "expect": ["anna.kowalska@example.pl"]
+  },
+  {
+    "name": "same-person-twice",
+    "language": "pl",
+    "text": "Marek Wiśniewski odwołał sesję. Zadzwoń do Marka Wiśniewskiego i zaproponuj czwartek.",
+    "expect": ["Marek Wiśniewski", "Marka Wiśniewskiego"]
+  },
+  {
+    "name": "hard-names",
+    "language": "pl",
+    "text": "Klientka Róża Wiatr i jej syn Kuba piszą, że Bartek z recepcji nie oddzwonił.",
+    "expect": ["Róża Wiatr", "Kuba", "Bartek"]
+  },
+  {
+    "name": "english",
+    "language": "en",
+    "text": "Please summarise John Smith's last session with Dr. Emily Clarke and email john.smith@example.com.",
+    "expect": ["John Smith", "Emily Clarke", "john.smith@example.com"]
+  }
+]

@@ -1,0 +1,42 @@
+nlp_engine_name: spacy
+models:
+  - lang_code: en
+    model_name: en_core_web_lg
+  - lang_code: pl
+    model_name: pl_core_news_lg
+
+ner_model_configuration:
+  # English labels (PERSON, GPE, ...) and Polish ones (persName, placeName, ...) side by side.
+  model_to_presidio_entity_mapping:
+    PER: PERSON
+    PERSON: PERSON
+    persName: PERSON
+    NORP: NRP
+    FAC: LOCATION
+    LOC: LOCATION
+    GPE: LOCATION
+    LOCATION: LOCATION
+    placeName: LOCATION
+    geogName: LOCATION
+    ORG: ORGANIZATION
+    ORGANIZATION: ORGANIZATION
+    orgName: ORGANIZATION
+    DATE: DATE_TIME
+    TIME: DATE_TIME
+    date: DATE_TIME
+    time: DATE_TIME
+
+  low_confidence_score_multiplier: 0.4
+  low_score_entity_names:
+    - ORGANIZATION
+  labels_to_ignore:
+    - CARDINAL
+    - EVENT
+    - LANGUAGE
+    - LAW
+    - MONEY
+    - ORDINAL
+    - PERCENT
+    - PRODUCT
+    - QUANTITY
+    - WORK_OF_ART

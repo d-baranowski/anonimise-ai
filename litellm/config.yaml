@@ -1,0 +1,34 @@
+model_list:
+  # Records what it receives; nothing leaves the machine.
+  - model_name: fake
+    litellm_params:
+      model: openai/fake-model
+      api_base: http://fake-llm:4010/v1
+      api_key: not-needed
+
+  # A real provider. Only used when ANTHROPIC_API_KEY is set in .env.
+  - model_name: claude
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+guardrails:
+  - guardrail_name: presidio-pii
+    litellm_params:
+      guardrail: presidio
+      mode: pre_call
+      default_on: true
+      # Numbered placeholders (<PERSON_1>) and the map back to the real values, used to restore
+      # the reply.
+      output_parse_pii: true
+      presidio_language: pl
+      # LiteLLM replaces findings by their offsets without resolving overlaps, so an email that is
+      # also matched as a URL garbles the text it sends (and the map it restores from). Dropping URL
+      # avoids the common case; any other overlap still trips it.
+      presidio_entities_deny_list: [URL]
+
+general_settings:
+  master_key: sk-poc-local
+
+litellm_settings:
+  set_verbose: false
