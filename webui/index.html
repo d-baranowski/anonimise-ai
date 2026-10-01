@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PII Round Trip</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2330; --muted: #667085; --line: #e4e7ec;
+    --accent: #4f46e5; --accent-ink: #ffffff; --ok: #127a46; --ok-bg: #e7f6ee; --bad: #b42318; --bad-bg: #fdecea;
+    --warn: #8a5a00; --warn-bg: #fff4dc; --code: #f2f4f7;
+    --e-person: #dbe7ff; --e-person-ink: #1d3fa6;
+    --e-location: #dff5e8; --e-location-ink: #136c3d;
+    --e-org: #f2e5ff; --e-org-ink: #6a2aa3;
+    --e-contact: #ffe9d6; --e-contact-ink: #9a4a00;
+    --e-id: #ffe0e6; --e-id-ink: #a3123b;
+    --e-date: #eef0f3; --e-date-ink: #475467;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --muted: #98a2b3; --line: #2a303b;
+      --accent: #8b85ff; --accent-ink: #0f1218; --ok: #4ade80; --ok-bg: #12301f; --bad: #ff8a80; --bad-bg: #3a1714;
+      --warn: #fbbf24; --warn-bg: #332509; --code: #1f2430;
+      --e-person: #1f2f57; --e-person-ink: #a9c1ff;
+      --e-location: #173b28; --e-location-ink: #8fe0b2;
+      --e-org: #34204d; --e-org-ink: #d6b4ff;
+      --e-contact: #43290f; --e-contact-ink: #ffc58f;
+      --e-id: #4a1726; --e-id-ink: #ffa3b8;
+      --e-date: #262b35; --e-date-ink: #c0c7d2;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 20px; padding: 20px 24px; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
+  aside { position: sticky; top: 16px; align-self: start; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) { aside { position: static; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  textarea, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  textarea { min-height: 150px; resize: vertical; }
+  .row { display: flex; gap: 10px; margin-top: 12px; }
+  .row > div { flex: 1; min-width: 0; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 500; }
+  button { margin-top: 14px; width: 100%; border: 0; border-radius: 8px; padding: 10px; font: 600 14px system-ui; color: var(--accent-ink); background: var(--accent); cursor: pointer; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .checks li { padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  .checks li.ok { background: var(--ok-bg); color: var(--ok); }
+  .checks li.bad { background: var(--bad-bg); color: var(--bad); }
+  .timings { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .pipeline { display: flex; flex-direction: column; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .stage h2 { margin: 0 0 2px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .stage h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12px; }
+  .stage .where { color: var(--muted); font-size: 12px; margin: 0 0 10px 30px; }
+  .side { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: auto; }
+  .side.local { background: var(--ok-bg); color: var(--ok); }
+  .side.remote { background: var(--warn-bg); color: var(--warn); }
+  .arrow { align-self: center; color: var(--muted); font-size: 12px; padding: 6px 0; display: flex; align-items: center; gap: 6px; }
+  .arrow::before { content: "↓"; font-size: 16px; }
+  .text { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--code); border-radius: 8px; padding: 10px 12px; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .text.empty { color: var(--muted); font-style: italic; }
+  mark, .tok { border-radius: 4px; padding: 0 3px; font-weight: 600; }
+  .tok { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .e-PERSON, .e-NRP { background: var(--e-person); color: var(--e-person-ink); }
+  .e-LOCATION { background: var(--e-location); color: var(--e-location-ink); }
+  .e-ORGANIZATION { background: var(--e-org); color: var(--e-org-ink); }
+  .e-EMAIL_ADDRESS, .e-PHONE_NUMBER, .e-URL { background: var(--e-contact); color: var(--e-contact-ink); }
+  .e-PL_PESEL, .e-IBAN_CODE, .e-CREDIT_CARD { background: var(--e-id); color: var(--e-id-ink); }
+  .e-DATE_TIME, .e-other { background: var(--e-date); color: var(--e-date-ink); }
+  .bad-tok { outline: 2px solid var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .flag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; white-space: nowrap; }
+  .flag.warn { background: var(--warn-bg); color: var(--warn); }
+  .flag.muted { background: var(--code); color: var(--muted); }
+  .error { background: var(--bad-bg); color: var(--bad); border-radius: 12px; padding: 14px 16px; }
+  .placeholder { color: var(--muted); text-align: center; padding: 60px 20px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 1200px) { .two { grid-template-columns: 1fr; } }
+  .sub { font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PII round trip</h1>
+  <p>Your prompt → Presidio finds the PII → LiteLLM swaps it for placeholders → the AI provider → LiteLLM puts the originals back</p>
+</header>
+<main>
+  <aside>
+    <div class="panel">
+      <label for="sample">Sample</label>
+      <select id="sample"><option value="">— write your own —</option></select>
+      <div style="margin-top:12px">
+        <label for="text">Prompt</label>
+        <textarea id="text" spellcheck="false"></textarea>
+      </div>
+      <div class="row">
+        <div>
+          <label for="language">Language</label>
+          <select id="language"><option value="pl">Polish</option><option value="en">English</option></select>
+        </div>
+        <div>
+          <label for="model">AI provider</label>
+          <select id="model"><option value="fake">Fake (local echo)</option><option value="claude">Claude (real)</option></select>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="stream"> Stream the reply</label>
+      <button id="run">Run</button>
+      <div class="hint">Ctrl/⌘ + Enter runs it. The fake provider never leaves your machine; Claude needs ANTHROPIC_API_KEY in .env.</div>
+    </div>
+    <div class="panel" id="summary" hidden>
+      <label>Checks</label>
+      <ul class="checks" id="checks"></ul>
+      <div class="timings" id="timings"></div>
+    </div>
+  </aside>
+
+  <section id="out">
+    <div class="placeholder">Pick a sample or write a prompt, then Run.</div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const TOKEN = /(<[A-Z_]+(?:_\d+)?>)/g;
+const KNOWN = ['PERSON', 'NRP', 'LOCATION', 'ORGANIZATION', 'EMAIL_ADDRESS', 'PHONE_NUMBER', 'URL', 'PL_PESEL', 'IBAN_CODE', 'CREDIT_CARD', 'DATE_TIME'];
+let samples = [];
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const entityClass = (entity) => `e-${KNOWN.includes(entity) ? entity : 'other'}`;
+const entityOfToken = (token) => token.slice(1, -1).replace(/_\d+$/, '');
+
+function block(html, empty) {
+  return empty ? `<div class="text empty">${esc(empty)}</div>` : `<div class="text">${html}</div>`;
+}
+
+/** The original prompt with each detection marked; nested detections are left to the table. */
+function markOriginal(text, findings) {
+  let html = '';
+  let pos = 0;
+  for (const f of [...findings].sort((a, b) => a.start - b.start || b.end - a.end)) {
+    if (f.start < pos) continue;
+    html += esc(text.slice(pos, f.start));
+    const title = `${f.entity} · ${f.score.toFixed(2)} · ${f.recognizer}${f.denied ? ' · not masked (deny list)' : ''}`;
+    html += `<mark class="${entityClass(f.entity)}" title="${esc(title)}"${f.denied ? ' style="opacity:.5"' : ''}>${esc(text.slice(f.start, f.end))}</mark>`;
+    pos = f.end;
+  }
+  return html + esc(text.slice(pos));
+}
+
+function markTokens(text, { badStray = false } = {}) {
+  return text
+    .split(TOKEN)
+    .map((part, i) => {
+      if (i % 2 === 0) return esc(part);
+      const numbered = /_\d+>$/.test(part);
+      return `<span class="tok ${entityClass(entityOfToken(part))}${badStray && !numbered ? ' bad-tok' : ''}">${esc(part)}</span>`;
+    })
+    .join('');
+}
+
+/** The restored reply, with each value the proxy put back marked in its entity's colour. */
+function markRestored(text, tokenMap) {
+  const values = tokenMap.filter((m) => m.value).sort((a, b) => b.value.length - a.value.length);
+  if (!values.length) return markTokens(text, { badStray: true });
+  const pattern = new RegExp(`(${values.map((v) => v.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+  const byValue = new Map(values.map((v) => [v.value, v.token]));
+  return text
+    .split(pattern)
+    .map((part, i) => (i % 2 === 1 ? `<mark class="${entityClass(entityOfToken(byValue.get(part)))}" title="restored from ${esc(byValue.get(part))}">${esc(part)}</mark>` : markTokens(part, { badStray: true })))
+    .join('');
+}
+
+function findingsTable(findings) {
+  if (!findings.length) return block('', 'Nothing detected.');
+  const rows = findings
+    .map(
+      (f) => `<tr>
+        <td><span class="tok ${entityClass(f.entity)}">${esc(f.entity)}</span></td>
+        <td class="mono">${esc(f.text)}</td>
+        <td>${f.score.toFixed(2)}</td>
+        <td>${esc(f.recognizer)}${f.denied ? '<span class="flag muted">deny list — not masked</span>' : ''}${f.overlaps ? '<span class="flag warn">overlaps</span>' : ''}</td>
+      </tr>`,
+    )
+    .join('');
+  return `<table><thead><tr><th>Entity</th><th>Text</th><th>Score</th><th>Found by</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function mapTable(map) {
+  if (!map.length) return block('', 'No placeholders were sent.');
+  const rows = map
+    .map((m) => `<tr><td><span class="tok ${entityClass(entityOfToken(m.token))}">${esc(m.token)}</span></td><td class="mono">${esc(m.value)}</td></tr>`)
+    .join('');
+  return `<table><thead><tr><th>Placeholder</th><th>Stands for</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function stage(n, title, where, side, body) {
+  const badge = side === 'remote' ? '<span class="side remote">leaves your network</span>' : '<span class="side local">stays local</span>';
+  return `<div class="stage"><h2><span class="n">${n}</span>${esc(title)}${badge}</h2><p class="where">${esc(where)}</p>${body}</div>`;
+}
+const arrow = (label) => `<div class="arrow">${esc(label)}</div>`;
+
+function render(r) {
+  const s = r.stages;
+  const provider = r.model === 'fake' ? 'fake provider (local echo)' : 'Anthropic';
+  $('out').innerHTML = `<div class="pipeline">
+    ${stage(1, 'Your prompt', 'What your app sends to the proxy. Highlighted: what Presidio found (hover for details).', 'local', block(markOriginal(r.text, s.findings)))}
+    ${arrow('LiteLLM asks Presidio analyzer what is PII')}
+    ${stage(2, 'Detected', `Presidio analyzer, ${r.language} — spaCy NER for names and places, patterns and checksums for the rest. No LLM involved. ${r.timings.analyzeMs} ms.`, 'local', findingsTable(s.findings))}
+    ${arrow('LiteLLM replaces each finding with a numbered placeholder and remembers the original')}
+    <div class="two">
+      ${stage(3, `Sent to the ${provider}`, 'The prompt as it left the proxy. This is all the provider ever sees.', r.model === 'fake' ? 'local' : 'remote', block(markTokens(s.sent ?? ''), s.sent === undefined ? 'Nothing recorded.' : ''))}
+      ${stage(4, 'Kept by the proxy', 'The placeholder → original map, held only in memory for this request.', 'local', mapTable(s.tokenMap ?? []))}
+    </div>
+    ${arrow(`the ${provider} answers`)}
+    ${stage(5, 'Provider’s raw reply', `What came back from the ${provider}, still with placeholders.`, r.model === 'fake' ? 'local' : 'remote', block(markTokens(s.providerReply ?? '', { badStray: true }), s.providerReply ? '' : 'No reply recorded.'))}
+    ${arrow('LiteLLM swaps the placeholders back for the originals')}
+    ${stage(6, 'What your app receives', 'Restored reply. Highlighted: values the proxy put back. Red outline: a placeholder that was not restored.', 'local', block(markRestored(s.restored ?? '', s.tokenMap ?? [])))}
+  </div>`;
+
+  $('checks').innerHTML = r.checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '✗'} ${esc(c.label)}</li>`).join('');
+  const t = r.timings;
+  $('timings').textContent =
+    `Analyze ${t.analyzeMs} ms · round trip through the proxy ${t.roundTripMs} ms` +
+    (t.stream ? ` · first chunk after ${t.stream.firstChunkMs ?? '—'} ms` : '');
+  $('summary').hidden = false;
+}
+
+async function run() {
+  const text = $('text').value.trim();
+  if (!text) return;
+  $('run').disabled = true;
+  $('run').textContent = 'Running…';
+  const sample = samples.find((s) => s.name === $('sample').value && s.text === text);
+  try {
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, language: $('language').value, model: $('model').value, stream: $('stream').checked, expect: sample?.expect ?? [] }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+    render(body);
+  } catch (err) {
+    $('out').innerHTML = `<div class="error"><strong>Run failed.</strong><br>${esc(err.message)}</div>`;
+    $('summary').hidden = true;
+  } finally {
+    $('run').disabled = false;
+    $('run').textContent = 'Run';
+  }
+}
+
+async function init() {
+  samples = await (await fetch('/api/samples')).json();
+  $('sample').innerHTML += samples.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+  $('sample').addEventListener('change', () => {
+    const s = samples.find((x) => x.name === $('sample').value);
+    if (!s) return;
+    $('text').value = s.text;
+    $('language').value = s.language ?? 'pl';
+  });
+  $('run').addEventListener('click', run);
+  $('text').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) run();
+  });
+  $('sample').value = samples[0]?.name ?? '';
+  $('sample').dispatchEvent(new Event('change'));
+}
+init();
+</script>
+</body>
+</html>

@@ -26,3 +26,18 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports: ["4000:4000"]
     depends_on: [presidio-analyzer, presidio-anonymizer, fake-llm]
+
+  webui:
+    image: node:22.20.0-alpine
+    command: ["node", "/app/webui/server.mjs"]
+    volumes:
+      - ./webui:/app/webui:ro
+      - ./samples.json:/app/samples.json:ro
+      - ./litellm/config.yaml:/app/litellm/config.yaml:ro
+    environment:
+      ANALYZER_URL: http://presidio-analyzer:3000
+      PROXY_URL: http://litellm:4000
+      TAP_URL: http://fake-llm:4010
+    ports: ["4020:4020"]
+    depends_on: [litellm]
+

@@ -16,6 +16,17 @@ Everything runs locally. Detection is a spaCy model plus regexes and checksums, 
 The default provider is `fake-llm` (:4010): it records exactly what it received and echoes it
 back, so you can see what a real provider would get without sending anything anywhere.
 
+## Web UI
+
+http://localhost:4020 — pick a sample or type a prompt, choose the provider, Run. It shows every
+state: the prompt with what Presidio found, the detections (overlaps and deny-listed ones
+flagged), what the provider received, the placeholder → original map the proxy keeps, the
+provider's raw reply, and what your app gets back — plus checks for leaks, a lossless round trip,
+unrestored placeholders and stream buffering.
+
+With "Claude (real)", requests go through a recording tap in `fake-llm` on their way to
+Anthropic, so stages 3 and 5 show exactly what Anthropic received and returned.
+
 ## Run
 
 ```bash

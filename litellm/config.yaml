@@ -6,11 +6,13 @@ model_list:
       api_base: http://fake-llm:4010/v1
       api_key: not-needed
 
-  # A real provider. Only used when ANTHROPIC_API_KEY is set in .env.
+  # A real provider, reached through the recording tap so the UI can show what Anthropic got.
+  # Only used when ANTHROPIC_API_KEY is set in .env.
   - model_name: claude
     litellm_params:
       model: anthropic/claude-sonnet-5-5
       api_key: os.environ/ANTHROPIC_API_KEY
+      api_base: http://fake-llm:4010/anthropic
 
 guardrails:
   - guardrail_name: presidio-pii
