@@ -1,0 +1,45 @@
+How the PII round trip works.
+
+The goal is simple. Your app wants to ask an AI about a client, but the client's name, PESEL, phone number and email should never leave your network. The AI still has to understand who is who, and your app has to get an answer back with the real names in it. So something sits between your app and the AI, takes the personal data out on the way there, and puts it back on the way home. That something is the proxy.
+
+There are four pieces running on your machine.
+
+The first is LiteLLM. It is the proxy itself. Your app talks to it exactly as it would talk to OpenAI or Anthropic, so nothing in your app has to change except the address it sends requests to. LiteLLM forwards each request to the real AI provider, and before it does, it runs what it calls a guardrail.
+
+The second piece is the Presidio analyzer, an open source project that started at Microsoft. Its only job is to read text and point at the personal data in it. It does not use an AI chatbot to do this, and nothing it reads leaves the container. For names and places it uses spaCy, which is a small, classic language model trained to tag words in a sentence. We gave it a Polish model as well as the English one, which is why it copes with inflected names like Jana Nowaka or Annie Kowalskiej. For everything with a fixed shape it uses patterns and checksums. A PESEL has a check digit, so a random eleven digit number will not be mistaken for one. Phone numbers, IBANs and email addresses are matched by pattern. We also added a pattern for therapy codes, so in J N dash M K dash Monday, the two sets of initials are recognised as people, and the day is left alone.
+
+The third piece is the Presidio anonymizer, its sister service, which LiteLLM calls as part of masking.
+
+The fourth piece is the fake provider. It stands in for the AI. It does no thinking at all. It records exactly what it received, and replies by echoing it back. That lets you see, with your own eyes, what a real provider would have been sent, without sending anything anywhere. When you pick Claude instead, the same piece becomes a recording tap: it passes the request on to Anthropic untouched and keeps a copy of what went out and what came back.
+
+Now, the journey of one message.
+
+Step one. Your app sends: Pan Jan Nowak has a session tomorrow, and JN has an unpaid invoice.
+
+Step two. LiteLLM sends that text to the analyzer, which answers with a list. Characters ten to nineteen are a person, Jan Nowak, with a confidence of eighty five percent. Characters fifty to fifty two are a person, J N.
+
+Step three is the interesting one: masking. Each finding is replaced with a placeholder, and the proxy writes down, in memory, for this one request only, which placeholder stands for which original text.
+
+Out of the box, LiteLLM numbers every finding separately. So Jan Nowak becomes person one, and J N becomes person two, and the AI is told about two different people. That is the problem you spotted. So we replaced only that numbering step with our own, in the file called linked presidio. It decides which mentions are the same person. Two full names are the same person when their words share a stem: Nowak, Nowaka and Nowakowi all start the same way. Initials join a person only when they match the initials of exactly one full name in the text. If two people both have the initials A N, we do not guess, and they stay separate.
+
+Then comes the part you just asked for. The number says who. A suffix says which way they were written. So Jana Nowaka becomes person two, variant one. Jan Nowak becomes person two, variant two. And J N becomes person two, initials. The AI can see that all three are person two, so it reasons about one man. And the proxy knows the exact text behind every variant.
+
+Step four. The masked text goes to the provider. This is the only thing the provider ever sees. In the web page, that is stage three, and the checks on the left confirm that none of the detected values made it through.
+
+Step five. The provider answers, using the placeholders. Something like: person two, initials, should pay before the session.
+
+Step six. LiteLLM takes the reply and swaps every placeholder back for the text it stood for. Person two, initials, becomes J N again. Variant one becomes Jana Nowaka again. If the AI writes a plain person two with no suffix, which it is free to do, the proxy uses the shortest full form of the name, which in Polish is usually the basic form, Jan Nowak. Your app gets back a normal sentence with the real names in it, and never sees a placeholder.
+
+So the map from placeholder to real name only ever exists inside the proxy, in memory, for the length of one request. It is never sent anywhere.
+
+A few honest limits, all of which the web page shows.
+
+Detection is statistical. The Polish model caught every name in our samples, but it will miss some names in real data, and a missed name goes to the provider in plain text. That is why the next step is to measure it on real shaped data before trusting it.
+
+LiteLLM has two bugs on this path. When two findings overlap, for example an email address that also looks like a website, its own numbering garbles the text. Our linked mode sorts that out before numbering. And streamed replies come back masked again, so for now, use normal, non streamed requests.
+
+Organisation names are not masked. The Polish model kept mistaking things like the day in a therapy code for a company, so, like Presidio's own default setup, organisations are switched off.
+
+And finally, the linking is our own code. It is about a hundred and fifty lines on top of LiteLLM. Nothing off the shelf links mentions of one person, so if you want the AI to know that J N and Jan Nowak are the same man, this is the part you would own.
+
+That is the whole thing. Take the data out, give the AI consistent stand-ins it can reason about, and put the real data back on the way home.
